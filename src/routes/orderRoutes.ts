@@ -9,9 +9,10 @@ const router = Router();
 router.post('/', upload.single('receipt'), (req, res, next) => {
     // If user is logged in, attach user id, otherwise proceed as guest
     if (req.headers.authorization) {
-        return protect(req as any, res, next);
+        protect(req as any, res, next);
+    } else {
+        next();
     }
-    next();
 }, createOrder);
 
 // Protected routes

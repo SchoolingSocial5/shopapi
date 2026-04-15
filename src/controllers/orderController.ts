@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import Order from '../models/Order';
 import User from '../models/User';
+import Product from '../models/Product';
 import { AuthRequest } from '../middleware/auth';
 import { generateToken } from '../utils/jwt';
 import Setting from '../models/Setting';
@@ -17,6 +18,7 @@ const getCompanyInitials = (name: string): string => {
 };
 
 export const createOrder = async (req: AuthRequest, res: Response) => {
+  const body = req.body || {};
   const { 
     customer_name, 
     customer_email, 
@@ -25,48 +27,20 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     items, 
     total_amount, 
     notes,
-    password 
-  } = req.body;
+    password,
+    payment_method 
+  } = body;
+
+  if (!customer_name || !customer_phone) {
+    return res.status(400).json({ 
+      message: 'Missing customer details. Please provide name and phone number.',
+      received_body: req.body // Include body in error for easier debugging
+    });
+  }
 
   try {
     let currentUser = req.user;
-    let authData = null;
-
-    // Handle guest registration if password is provided and not already logged in
-    if (password && !currentUser) {
-      const userExists = await User.findOne({ email: customer_email });
-      if (userExists) {
-        return res.status(400).json({ message: 'A user with this email already exists. Please log in first.' });
-      }
-
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
-      const newUser = await User.create({
-        name: customer_name,
-        email: customer_email,
-        password: hashedPassword,
-        phone: customer_phone,
-        address: delivery_address,
-      });
-
-      if (newUser) {
-        currentUser = { id: newUser.id } as any;
-        authData = {
-          access_token: generateToken({ id: newUser.id }),
-          user: {
-            id: newUser.id,
-            name: newUser.name,
-            email: newUser.email,
-            role: newUser.role,
-            status: newUser.status,
-            phone: newUser.phone,
-            address: newUser.address,
-          },
-        };
-      }
-    }
-
+    
     // Parse items if they are sent as a string (FormData)
     let parsedItems = items;
     if (typeof items === 'string') {
@@ -77,22 +51,113 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       }
     }
 
+    if (!Array.isArray(parsedItems) || parsedItems.length === 0) {
+      return res.status(400).json({ message: 'Order must contain at least one item.' });
+    }
+
+    // 1. Stock Validation
+    for (const item of parsedItems) {
+      const product = await Product.findById(item.productId || item.id);
+      if (!product) {
+        return res.status(404).json({ message: `Product ${item.productName} not found.` });
+      }
+      if (product.quantity < item.quantity) {
+        return res.status(400).json({ message: `Insufficient stock for ${item.productName}. (In stock: ${product.quantity})` });
+      }
+    }
+
+    // Default password for admin-created users
+    const effectivePassword = password || 'Test123$';
+    const effectiveEmail = customer_email || (customer_phone ? `${customer_phone}@mail.com` : null);
+
+    // 2. CRM Update / User Lookup
+    let userExists = null;
+    if (!currentUser) {
+      userExists = await User.findOne({ 
+        $or: [
+          { email: effectiveEmail },
+          ...(customer_phone ? [{ phone: customer_phone }] : [])
+        ]
+      });
+
+      if (userExists) {
+        currentUser = { id: userExists.id } as any;
+        // Update CRM stats
+        userExists.totalOrders = (userExists.totalOrders || 0) + 1;
+        userExists.totalSpent = (userExists.totalSpent || 0) + Number(total_amount);
+        await userExists.save();
+      } else if (effectiveEmail) {
+        // Create new user
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(effectivePassword, salt);
+
+        const newUser = await User.create({
+          name: customer_name,
+          email: effectiveEmail,
+          password: hashedPassword,
+          phone: customer_phone,
+          address: delivery_address || 'Admin Created',
+          totalOrders: 1,
+          totalSpent: Number(total_amount)
+        });
+
+        if (newUser) {
+          currentUser = { id: newUser.id } as any;
+        }
+      }
+    } else {
+      // If user is logged in, still update stats
+      const loggedInUser = await User.findById(currentUser.id);
+      if (loggedInUser) {
+        loggedInUser.totalOrders = (loggedInUser.totalOrders || 0) + 1;
+        loggedInUser.totalSpent = (loggedInUser.totalSpent || 0) + Number(total_amount);
+        await loggedInUser.save();
+      }
+    }
+
+    // 3. Stock Reduction
+    for (const item of parsedItems) {
+      await Product.findByIdAndUpdate(item.productId || item.id, {
+        $inc: { quantity: -item.quantity }
+      });
+    }
+
+    // Set payment status based on POS method
+    const isAdminPayment = ['cash', 'pos', 'transfer'].includes(payment_method);
+
+    // Generate Order ID (Receipt Number)
+    const setting = await Setting.findOne();
+    const initials = getCompanyInitials(setting?.companyName || 'REC');
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const generatedReceiptNumber = `${initials}-${dateStr}-${randomSuffix}`;
+
     const order = await Order.create({
       userId: currentUser ? currentUser.id : null,
       customerName: customer_name,
-      customerEmail: customer_email,
+      customerEmail: effectiveEmail,
       customerPhone: customer_phone,
       deliveryAddress: delivery_address,
-      items: parsedItems,
+      items: parsedItems.map(i => ({
+        productId: i.productId || i.id,
+        productName: i.productName,
+        productImage: i.productImage,
+        price: i.price,
+        quantity: i.quantity
+      })),
       totalAmount: total_amount,
       notes,
+      paymentMethod: payment_method || 'online',
+      paymentStatus: isAdminPayment ? 'paid' : 'unpaid',
+      receiptNumber: generatedReceiptNumber,
+      approvedBy: req.user ? (req.user.name || req.user.email) : 'POS System',
       receiptPath: req.file ? (req.file as any).location || `/uploads/${req.file.filename}` : null,
     });
 
     res.status(201).json({
       ...order.toObject(),
-      id: order.id,
-      auth: authData
+      id: order.id
     });
   } catch (error: any) {
     console.error('Create Order Error:', error);
@@ -113,22 +178,8 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
       .skip(skip)
       .limit(limit);
 
-    const mappedOrders = orders.map(o => ({
-      ...o.toObject(),
-      id: o.id,
-      customer_name: o.get('customerName'),
-      customer_email: o.get('customerEmail'),
-      customer_phone: o.get('customerPhone'),
-      delivery_address: o.get('deliveryAddress'),
-      total_amount: o.get('totalAmount'),
-      payment_status: o.get('paymentStatus'),
-      receipt_number: o.get('receiptNumber'),
-      approved_by: o.get('approvedBy'),
-      created_at: o.get('createdAt'),
-    }));
-
     res.json({
-      orders: mappedOrders,
+      orders,
       pagination: {
         total,
         page,

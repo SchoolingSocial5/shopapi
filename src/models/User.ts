@@ -8,6 +8,8 @@ export interface IUser extends Document {
   status: string;
   phone?: string;
   address?: string;
+  totalOrders: number;
+  totalSpent: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +23,8 @@ const UserSchema: Schema = new Schema(
     status: { type: String, default: 'user' },
     phone: { type: String },
     address: { type: String },
+    totalOrders: { type: Number, default: 0 },
+    totalSpent: { type: Number, default: 0 },
   },
   {
     timestamps: true,

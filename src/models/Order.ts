@@ -21,6 +21,7 @@ export interface IOrder extends Document {
   receiptPath?: string;
   receiptNumber?: string;
   approvedBy?: string;
+  paymentMethod: 'cash' | 'pos' | 'transfer' | 'online';
   items: IOrderItem[];
   createdAt: Date;
   updatedAt: Date;
@@ -48,6 +49,7 @@ const OrderSchema: Schema = new Schema(
     receiptPath: { type: String },
     receiptNumber: { type: String },
     approvedBy: { type: String },
+    paymentMethod: { type: String, enum: ['cash', 'pos', 'transfer', 'online'], default: 'online' },
     items: [OrderItemSchema],
   },
   {
@@ -56,5 +58,19 @@ const OrderSchema: Schema = new Schema(
     toObject: { virtuals: true },
   }
 );
+
+// Virtuals for snake_case compatibility with frontend
+OrderSchema.virtual('customer_name').get(function() { return this.customerName; });
+OrderSchema.virtual('customer_email').get(function() { return this.customerEmail; });
+OrderSchema.virtual('customer_phone').get(function() { return this.customerPhone; });
+OrderSchema.virtual('delivery_address').get(function() { return this.deliveryAddress; });
+OrderSchema.virtual('total_amount').get(function() { return this.totalAmount; });
+OrderSchema.virtual('payment_status').get(function() { return this.paymentStatus; });
+OrderSchema.virtual('payment_method').get(function() { return this.paymentMethod; });
+OrderSchema.virtual('receipt_number').get(function() { return this.receiptNumber; });
+OrderSchema.virtual('receipt_path').get(function() { return this.receiptPath; });
+OrderSchema.virtual('approved_by').get(function() { return this.approvedBy; });
+OrderSchema.virtual('created_at').get(function() { return this.createdAt; });
+OrderSchema.virtual('updated_at').get(function() { return this.updatedAt; });
 
 export default mongoose.model<IOrder>('Order', OrderSchema);

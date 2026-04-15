@@ -27,14 +27,6 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Request Logger
-app.use((req, res, next) => {
-  const now = new Date();
-  const timestamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  console.log(`[${timestamp}] ${req.method} ${req.path}`);
-  next();
-});
-
 // Database Connection
 const mongodbUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/schooling_shop';
 
