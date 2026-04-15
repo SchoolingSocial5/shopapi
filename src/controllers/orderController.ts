@@ -6,6 +6,16 @@ import { generateToken } from '../utils/jwt';
 import Setting from '../models/Setting';
 import bcrypt from 'bcryptjs';
 
+const getCompanyInitials = (name: string): string => {
+  if (!name) return 'REC';
+  const initials = name
+    .split(' ')
+    .map(word => word[0])
+    .join('')
+    .toUpperCase();
+  return initials || 'REC';
+};
+
 export const createOrder = async (req: AuthRequest, res: Response) => {
   const { 
     customer_name, 
@@ -111,6 +121,8 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
       customer_phone: o.get('customerPhone'),
       delivery_address: o.get('deliveryAddress'),
       total_amount: o.get('totalAmount'),
+      payment_status: o.get('paymentStatus'),
+      receipt_number: o.get('receiptNumber'),
       approved_by: o.get('approvedBy'),
       created_at: o.get('createdAt'),
     }));
@@ -167,14 +179,11 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
     // Generate receipt number and track staff if marked as paid
     if (finalPaymentStatus === 'paid' && !order.receiptNumber) {
       const setting = await Setting.findOne();
-      if (setting?.companyName === 'My Company') {
-        const count = await Order.countDocuments({ receiptNumber: { $regex: /^MC-/ } });
-        updateData.receiptNumber = `MC-${count + 1}`;
-      } else {
-        // More robust generic fallback: count all orders with ANY receipt number
-        const count = await Order.countDocuments({ receiptNumber: { $exists: true, $ne: null } });
-        updateData.receiptNumber = `REC-${count + 1}`;
-      }
+      const prefix = getCompanyInitials(setting?.companyName || '');
+      
+      // Count orders that have a receipt number starting with this prefix
+      const count = await Order.countDocuments({ receiptNumber: { $regex: new RegExp(`^${prefix}-`) } });
+      updateData.receiptNumber = `${prefix}-${count + 1}`;
       
       updateData.approvedBy = req.user?.name || 'Admin';
     }
@@ -185,7 +194,25 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
       { new: true }
     );
 
-    res.json(updatedOrder);
+    if (!updatedOrder) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    const mappedOrder = {
+      ...updatedOrder.toObject(),
+      id: updatedOrder.id,
+      customer_name: updatedOrder.get('customerName'),
+      customer_email: updatedOrder.get('customerEmail'),
+      customer_phone: updatedOrder.get('customerPhone'),
+      delivery_address: updatedOrder.get('deliveryAddress'),
+      total_amount: updatedOrder.get('totalAmount'),
+      payment_status: updatedOrder.get('paymentStatus'),
+      receipt_number: updatedOrder.get('receiptNumber'),
+      approved_by: updatedOrder.get('approvedBy'),
+      created_at: updatedOrder.get('createdAt'),
+    };
+
+    res.json(mappedOrder);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
   }
@@ -210,7 +237,7 @@ export const bulkUpdateStatus = async (req: AuthRequest, res: Response) => {
 
   try {
     const setting = await Setting.findOne();
-    const isMyCompany = setting?.companyName === 'My Company';
+    const prefix = getCompanyInitials(setting?.companyName || '');
     
     // Process them to handle individual receipt generation
     const updatedOrders = [];
@@ -223,13 +250,8 @@ export const bulkUpdateStatus = async (req: AuthRequest, res: Response) => {
       if (finalPaymentStatus) updateData.paymentStatus = finalPaymentStatus;
 
       if (finalPaymentStatus === 'paid' && !order.receiptNumber) {
-        if (isMyCompany) {
-          const count = await Order.countDocuments({ receiptNumber: { $regex: /^MC-/ } });
-          updateData.receiptNumber = `MC-${count + 1}`;
-        } else {
-          const count = await Order.countDocuments({ receiptNumber: { $exists: true, $ne: null } });
-          updateData.receiptNumber = `REC-${count + 1}`;
-        }
+        const count = await Order.countDocuments({ receiptNumber: { $regex: new RegExp(`^${prefix}-`) } });
+        updateData.receiptNumber = `${prefix}-${count + 1}`;
         updateData.approvedBy = req.user?.name || 'Admin';
       }
 

@@ -7,6 +7,7 @@ export interface IExpense extends Document {
   date: Date;
   description?: string;
   receiptPath?: string;
+  recorded_by?: string;
 }
 
 const ExpenseSchema: Schema = new Schema(
@@ -17,6 +18,7 @@ const ExpenseSchema: Schema = new Schema(
     date: { type: Date, required: true },
     description: { type: String },
     receiptPath: { type: String },
+    recorded_by: { type: String },
   },
   {
     timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true },
