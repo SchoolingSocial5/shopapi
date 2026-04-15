@@ -60,7 +60,7 @@ export const createPurchase = async (req: Request, res: Response) => {
     // 2. Update the product stock
     const product = await Product.findById(product_id);
     if (product) {
-      product.quantity = (product.quantity || 0) + Number(quantity);
+      product.quantity = (product.quantity || 0) + parseFloat(quantity as string);
       await product.save();
     }
 

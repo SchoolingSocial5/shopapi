@@ -96,7 +96,8 @@ export const updateProduct = async (req: Request, res: Response) => {
       image_url: p.imageUrl || "",
     });
   } catch (error: any) {
-    res.status(400).json({ message: error.message });
+    console.error('Update Product Error:', error);
+    res.status(400).json({ message: error.message || 'Error updating product' });
   }
 };
 

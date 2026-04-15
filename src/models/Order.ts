@@ -20,6 +20,7 @@ export interface IOrder extends Document {
   notes?: string;
   receiptPath?: string;
   receiptNumber?: string;
+  approvedBy?: string;
   items: IOrderItem[];
   createdAt: Date;
   updatedAt: Date;
@@ -46,6 +47,7 @@ const OrderSchema: Schema = new Schema(
     notes: { type: String },
     receiptPath: { type: String },
     receiptNumber: { type: String },
+    approvedBy: { type: String },
     items: [OrderItemSchema],
   },
   {

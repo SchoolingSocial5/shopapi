@@ -4,7 +4,12 @@ import Banner from '../models/Banner';
 export const getBanners = async (req: Request, res: Response) => {
   try {
     const banners = await Banner.find().sort({ createdAt: -1 });
-    res.json(banners);
+    const mappedBanners = banners.map(b => ({
+      ...b.toObject(),
+      id: b.id,
+      image_url: b.imageUrl,
+    }));
+    res.json(mappedBanners);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

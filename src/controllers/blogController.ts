@@ -4,7 +4,12 @@ import Blog from '../models/Blog';
 export const getBlogs = async (req: Request, res: Response) => {
   try {
     const blogs = await Blog.find().sort({ createdAt: -1 });
-    res.json(blogs);
+    const mappedBlogs = blogs.map(b => ({
+      ...b.toObject(),
+      id: b.id,
+      image_url: b.imageUrl,
+    }));
+    res.json(mappedBlogs);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

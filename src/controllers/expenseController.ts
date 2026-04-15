@@ -7,7 +7,7 @@ export const getExpenses = async (req: Request, res: Response) => {
     const mappedExpenses = expenses.map(e => ({
       ...e.toObject(),
       id: e.id,
-      receipt_path: e.receiptPath || "",
+      receipt_url: e.receiptPath || "",
     }));
     res.json(mappedExpenses);
   } catch (error: any) {

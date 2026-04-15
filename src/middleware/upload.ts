@@ -6,13 +6,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const s3Configured = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_BUCKET;
+const s3Configured = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_S3_BUCKET_NAME;
 
 let storage;
 
 if (s3Configured) {
   const s3 = new S3Client({
-    region: process.env.AWS_DEFAULT_REGION || 'us-east-1',
+    region: process.env.AWS_REGION || 'us-east-1',
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
@@ -21,8 +21,11 @@ if (s3Configured) {
 
   storage = multerS3({
     s3: s3,
-    bucket: process.env.AWS_BUCKET!,
-    acl: 'public-read',
+    bucket: process.env.AWS_S3_BUCKET_NAME!,
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+    metadata: function (req, file, cb) {
+      cb(null, { fieldName: file.fieldname });
+    },
     key: function (req, file, cb) {
       cb(null, `uploads/${Date.now()}-${file.originalname}`);
     },
@@ -40,14 +43,15 @@ if (s3Configured) {
 }
 
 const fileFilter = (req: any, file: any, cb: any) => {
-  const allowedFileTypes = /jpeg|jpg|png|gif|webp|svg/;
+  // Support images and common document files
+  const allowedFileTypes = /jpeg|jpg|png|gif|webp|svg|pdf|doc|docx|xlsx|xls/;
   const mimetype = allowedFileTypes.test(file.mimetype);
   const extname = allowedFileTypes.test(path.extname(file.originalname).toLowerCase());
 
   if (mimetype && extname) {
     return cb(null, true);
   }
-  cb(new Error('Only image files are allowed!'));
+  cb(new Error('File type not allowed! Only images and common documents are permitted.'));
 };
 
 const upload = multer({

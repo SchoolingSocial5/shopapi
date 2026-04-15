@@ -1,23 +1,91 @@
 import { Request, Response } from 'express';
 import Order from '../models/Order';
+import User from '../models/User';
 import { AuthRequest } from '../middleware/auth';
+import { generateToken } from '../utils/jwt';
+import Setting from '../models/Setting';
+import bcrypt from 'bcryptjs';
 
 export const createOrder = async (req: AuthRequest, res: Response) => {
-  const { customer_name, customer_email, customer_phone, delivery_address, items, total_amount, notes } = req.body;
+  const { 
+    customer_name, 
+    customer_email, 
+    customer_phone, 
+    delivery_address, 
+    items, 
+    total_amount, 
+    notes,
+    password 
+  } = req.body;
 
   try {
+    let currentUser = req.user;
+    let authData = null;
+
+    // Handle guest registration if password is provided and not already logged in
+    if (password && !currentUser) {
+      const userExists = await User.findOne({ email: customer_email });
+      if (userExists) {
+        return res.status(400).json({ message: 'A user with this email already exists. Please log in first.' });
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      const newUser = await User.create({
+        name: customer_name,
+        email: customer_email,
+        password: hashedPassword,
+        phone: customer_phone,
+        address: delivery_address,
+      });
+
+      if (newUser) {
+        currentUser = { id: newUser.id } as any;
+        authData = {
+          access_token: generateToken({ id: newUser.id }),
+          user: {
+            id: newUser.id,
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role,
+            status: newUser.status,
+            phone: newUser.phone,
+            address: newUser.address,
+          },
+        };
+      }
+    }
+
+    // Parse items if they are sent as a string (FormData)
+    let parsedItems = items;
+    if (typeof items === 'string') {
+      try {
+        parsedItems = JSON.parse(items);
+      } catch (e) {
+        console.error('Failed to parse items:', items);
+      }
+    }
+
     const order = await Order.create({
-      userId: req.user ? req.user.id : null,
+      userId: currentUser ? currentUser.id : null,
       customerName: customer_name,
       customerEmail: customer_email,
       customerPhone: customer_phone,
       deliveryAddress: delivery_address,
-      items,
+      items: parsedItems,
       totalAmount: total_amount,
       notes,
+      receiptPath: req.file ? (req.file as any).location || `/uploads/${req.file.filename}` : null,
     });
-    res.status(201).json(order);
+
+    res.status(201).json({
+      ...order.toObject(),
+      id: order.id,
+      auth: authData
+    });
   } catch (error: any) {
+    console.error('Create Order Error:', error);
     res.status(400).json({ message: error.message });
   }
 };
@@ -43,6 +111,7 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
       customer_phone: o.get('customerPhone'),
       delivery_address: o.get('deliveryAddress'),
       total_amount: o.get('totalAmount'),
+      approved_by: o.get('approvedBy'),
       created_at: o.get('createdAt'),
     }));
 
@@ -81,18 +150,42 @@ export const getOrderById = async (req: Request, res: Response) => {
   }
 };
 
-export const updateOrderStatus = async (req: Request, res: Response) => {
-  const { status, paymentStatus } = req.body;
+export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
+  const { status, paymentStatus, payment_status } = req.body;
+  const finalPaymentStatus = paymentStatus || payment_status;
+
   try {
-    const order = await Order.findByIdAndUpdate(
-      req.params.id,
-      { $set: { status, paymentStatus } },
-      { new: true }
-    );
+    const order = await Order.findById(req.params.id);
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
-    res.json(order);
+
+    const updateData: any = {};
+    if (status) updateData.status = status;
+    if (finalPaymentStatus) updateData.paymentStatus = finalPaymentStatus;
+
+    // Generate receipt number and track staff if marked as paid
+    if (finalPaymentStatus === 'paid' && !order.receiptNumber) {
+      const setting = await Setting.findOne();
+      if (setting?.companyName === 'My Company') {
+        const count = await Order.countDocuments({ receiptNumber: { $regex: /^MC-/ } });
+        updateData.receiptNumber = `MC-${count + 1}`;
+      } else {
+        // More robust generic fallback: count all orders with ANY receipt number
+        const count = await Order.countDocuments({ receiptNumber: { $exists: true, $ne: null } });
+        updateData.receiptNumber = `REC-${count + 1}`;
+      }
+      
+      updateData.approvedBy = req.user?.name || 'Admin';
+    }
+
+    const updatedOrder = await Order.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateData },
+      { new: true }
+    );
+
+    res.json(updatedOrder);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
   }
@@ -105,6 +198,55 @@ export const deleteOrder = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Order not found' });
     }
     await order.deleteOne();
+    res.status(204).send();
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const bulkUpdateStatus = async (req: AuthRequest, res: Response) => {
+  const { ids, status, paymentStatus, payment_status } = req.body;
+  const finalPaymentStatus = paymentStatus || payment_status;
+
+  try {
+    const setting = await Setting.findOne();
+    const isMyCompany = setting?.companyName === 'My Company';
+    
+    // Process them to handle individual receipt generation
+    const updatedOrders = [];
+    for (const id of ids) {
+      const order = await Order.findById(id);
+      if (!order) continue;
+
+      const updateData: any = {};
+      if (status) updateData.status = status;
+      if (finalPaymentStatus) updateData.paymentStatus = finalPaymentStatus;
+
+      if (finalPaymentStatus === 'paid' && !order.receiptNumber) {
+        if (isMyCompany) {
+          const count = await Order.countDocuments({ receiptNumber: { $regex: /^MC-/ } });
+          updateData.receiptNumber = `MC-${count + 1}`;
+        } else {
+          const count = await Order.countDocuments({ receiptNumber: { $exists: true, $ne: null } });
+          updateData.receiptNumber = `REC-${count + 1}`;
+        }
+        updateData.approvedBy = req.user?.name || 'Admin';
+      }
+
+      const updated = await Order.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+      updatedOrders.push(updated);
+    }
+
+    res.json({ message: 'Bulk update successful', count: updatedOrders.length });
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+export const bulkDeleteOrders = async (req: Request, res: Response) => {
+  const { ids } = req.body;
+  try {
+    await Order.deleteMany({ _id: { $in: ids } });
     res.status(204).send();
   } catch (error: any) {
     res.status(500).json({ message: error.message });

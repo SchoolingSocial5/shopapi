@@ -66,4 +66,13 @@ app.get('/', (req, res) => {
   res.json({ message: 'Schooling Shop API is running' });
 });
 
+// Error Handling Middleware
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('API Error:', err);
+  res.status(err.status || 500).json({
+    message: err.message || 'An internal server error occurred',
+    error: process.env.NODE_ENV === 'development' ? err : {}
+  });
+});
+
 export default app;
