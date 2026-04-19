@@ -171,8 +171,13 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
 
-    const total = await Order.countDocuments();
-    const orders = await Order.find()
+    const filter: any = {};
+    if (req.query.payment_status) {
+      filter.paymentStatus = req.query.payment_status;
+    }
+
+    const total = await Order.countDocuments(filter);
+    const orders = await Order.find(filter)
       .populate('userId', 'name email')
       .sort({ createdAt: -1 })
       .skip(skip)

@@ -16,13 +16,20 @@ export const getBlogs = async (req: Request, res: Response) => {
 };
 
 export const createBlog = async (req: Request, res: Response) => {
-  const { title, content } = req.body;
+  const { title, content, category, subtitle } = req.body;
+  console.log('--- Blog Creation ---');
+  console.log('Body:', { title, category, subtitle });
+  console.log('File:', req.file);
   const imageUrl = req.file 
     ? (req.file as any).location || `/uploads/${req.file.filename}` 
     : undefined;
   try {
-    const blog = await Blog.create({ title, content, imageUrl });
-    res.status(201).json(blog);
+    const blog = await Blog.create({ title, content, imageUrl, category, subtitle });
+    res.status(201).json({
+      ...blog.toObject(),
+      id: blog.id,
+      image_url: blog.imageUrl,
+    });
   } catch (error: any) {
     res.status(400).json({ message: error.message });
   }
@@ -42,7 +49,14 @@ export const updateBlog = async (req: Request, res: Response) => {
       { $set: { ...req.body, imageUrl: blog.imageUrl } },
       { new: true }
     );
-    res.json(updatedBlog);
+
+    if (!updatedBlog) return res.status(404).json({ message: 'Blog not found' });
+
+    res.json({
+      ...updatedBlog.toObject(),
+      id: updatedBlog.id,
+      image_url: updatedBlog.imageUrl,
+    });
   } catch (error: any) {
     res.status(400).json({ message: error.message });
   }

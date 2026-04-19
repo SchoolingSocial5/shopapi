@@ -33,7 +33,14 @@ const OrderItemSchema: Schema = new Schema({
   productImage: { type: String },
   price: { type: Number, required: true },
   quantity: { type: Number, default: 1 },
+}, {
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true },
 });
+
+// Virtuals for OrderItem
+OrderItemSchema.virtual('product_name').get(function() { return this.productName; });
+OrderItemSchema.virtual('product_image').get(function() { return this.productImage; });
 
 const OrderSchema: Schema = new Schema(
   {

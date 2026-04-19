@@ -12,6 +12,7 @@ export interface ISetting extends Document {
   logo?: string;
   favicon?: string;
   currencySymbol?: string;
+  showBlog?: boolean;
 }
 
 const SettingSchema: Schema = new Schema(
@@ -27,6 +28,7 @@ const SettingSchema: Schema = new Schema(
     logo: { type: String },
     favicon: { type: String },
     currencySymbol: { type: String, default: '₦' },
+    showBlog: { type: Boolean, default: true },
   },
   {
     timestamps: true,

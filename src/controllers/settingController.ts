@@ -19,6 +19,7 @@ export const getSettings = async (req: Request, res: Response) => {
       logo: settings.logo || "",
       favicon: settings.favicon || "",
       currency_symbol: settings.currencySymbol || "₦",
+      show_blog: settings.showBlog !== undefined ? settings.showBlog : true,
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -39,6 +40,7 @@ export const updateSettings = async (req: Request, res: Response) => {
     if (req.body.phone_number !== undefined) updateData.phoneNumber = req.body.phone_number;
     if (req.body.address !== undefined) updateData.address = req.body.address;
     if (req.body.currency_symbol !== undefined) updateData.currencySymbol = req.body.currency_symbol;
+    if (req.body.show_blog !== undefined) updateData.showBlog = req.body.show_blog === true || req.body.show_blog === 'true';
 
     if (!settings) {
       settings = new Setting(updateData);
@@ -71,6 +73,7 @@ export const updateSettings = async (req: Request, res: Response) => {
       logo: settings.logo || "",
       favicon: settings.favicon || "",
       currency_symbol: settings.currencySymbol || "₦",
+      show_blog: settings.showBlog !== undefined ? settings.showBlog : true,
     });
   } catch (error: any) {
     res.status(400).json({ message: error.message });
