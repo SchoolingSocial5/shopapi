@@ -7,6 +7,7 @@ import path from 'path';
 // Import Routes
 import authRoutes from './routes/authRoutes';
 import productRoutes from './routes/productRoutes';
+import wholesaleProductRoutes from './routes/wholesaleProductRoutes';
 import orderRoutes from './routes/orderRoutes';
 import categoryRoutes from './routes/categoryRoutes';
 import bannerRoutes from './routes/bannerRoutes';
@@ -61,6 +62,9 @@ mongoose.connect(mongodbUri, {
 // Routes
 app.use('/api', authRoutes); // Auth routes (register, login)
 app.use('/api/products', productRoutes);
+app.use('/api/admin/products', productRoutes);
+app.use('/api/wholesale-products', wholesaleProductRoutes);
+app.use('/api/admin/wholesale-products', wholesaleProductRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin/orders', orderRoutes);
 app.use('/api/categories', categoryRoutes);

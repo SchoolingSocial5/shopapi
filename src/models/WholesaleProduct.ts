@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export interface IProduct extends Document {
+export interface IWholesaleProduct extends Document {
   name: string;
   category: string;
   price: string;
@@ -9,11 +9,12 @@ export interface IProduct extends Document {
   quantity: number;
   imageUrl?: string;
   description?: string;
+  minOrderQuantity?: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const ProductSchema: Schema = new Schema(
+const WholesaleProductSchema: Schema = new Schema(
   {
     name: { type: String, required: true },
     category: { type: String, required: true },
@@ -23,6 +24,7 @@ const ProductSchema: Schema = new Schema(
     quantity: { type: Number, default: 0, min: [0, 'Quantity cannot be less than zero'] },
     imageUrl: { type: String },
     description: { type: String },
+    minOrderQuantity: { type: Number, default: 1 },
   },
   {
     timestamps: true,
@@ -31,4 +33,4 @@ const ProductSchema: Schema = new Schema(
   }
 );
 
-export default mongoose.model<IProduct>('Product', ProductSchema);
+export default mongoose.model<IWholesaleProduct>('WholesaleProduct', WholesaleProductSchema);

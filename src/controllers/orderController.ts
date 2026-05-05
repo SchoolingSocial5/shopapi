@@ -62,7 +62,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         return res.status(404).json({ message: `Product ${item.productName} not found.` });
       }
       if (product.quantity < item.quantity) {
-        return res.status(400).json({ message: `Insufficient stock for ${item.productName}. (In stock: ${product.quantity})` });
+        return res.status(400).json({ message: `some products are out of quantity are out of stock` });
       }
     }
 

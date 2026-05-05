@@ -6,10 +6,20 @@ export const getPurchases = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const productType = req.query.product_type as string;
     const skip = (page - 1) * limit;
 
-    const total = await Purchase.countDocuments();
-    const purchases = await Purchase.find()
+    let query: any = {};
+
+    if (productType) {
+      // Find products that match the type
+      const products = await Product.find({ productType }).select('_id');
+      const productIds = products.map(p => p._id);
+      query.productId = { $in: productIds };
+    }
+
+    const total = await Purchase.countDocuments(query);
+    const purchases = await Purchase.find(query)
       .populate('productId')
       .sort({ date: -1 })
       .skip(skip)
