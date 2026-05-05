@@ -37,3 +37,13 @@ export const adminOnly = (req: AuthRequest, res: Response, next: NextFunction) =
     res.status(403).json({ message: 'Not authorized as an admin' });
   }
 };
+
+export const authorize = (position: string) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (req.user && (req.user.role === 'admin' || req.user.staffPosition === position)) {
+      next();
+    } else {
+      res.status(403).json({ message: `Access denied. Requires ${position} privilege.` });
+    }
+  };
+};

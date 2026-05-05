@@ -20,6 +20,7 @@ import expenseRoutes from './routes/expenseRoutes';
 import userRoutes from './routes/userRoutes';
 import positionRoutes from './routes/positionRoutes';
 import socialPlatformRoutes from './routes/socialPlatformRoutes';
+import wholesaleOrderRoutes from './routes/wholesaleOrderRoutes';
 
 dotenv.config();
 
@@ -67,6 +68,8 @@ app.use('/api/wholesale-products', wholesaleProductRoutes);
 app.use('/api/admin/wholesale-products', wholesaleProductRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin/orders', orderRoutes);
+app.use('/api/wholesale-orders', wholesaleOrderRoutes);
+app.use('/api/admin/wholesale-orders', wholesaleOrderRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/admin/categories', categoryRoutes);
 app.use('/api/banners', bannerRoutes);
