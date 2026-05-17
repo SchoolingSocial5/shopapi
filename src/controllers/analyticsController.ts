@@ -6,17 +6,31 @@ import User from '../models/User';
 
 export const getAnalytics = async (req: Request, res: Response) => {
   try {
+    const from = req.query.from as string;
+    const to = req.query.to as string;
+
+    let filterOrder: any = {};
+    let filterUser: any = { role: { $in: ['customer', 'user'] } };
+
+    if (from && to) {
+      const startDate = new Date(from);
+      const endDate = new Date(to);
+      endDate.setHours(23, 59, 59, 999);
+      
+      filterOrder.createdAt = { $gte: startDate, $lte: endDate };
+      filterUser.createdAt = { $gte: startDate, $lte: endDate };
+    }
+
     const now = new Date();
     const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
-    // Total counts (Already implemented)
-    const totalOrders = await Order.countDocuments();
+    // Total counts (filtered by date-range if provided, or all-time)
+    const totalOrders = await Order.countDocuments(filterOrder);
     const totalProducts = await Product.countDocuments();
-    const totalCustomers = await User.countDocuments({ role: { $in: ['customer', 'user'] } });
+    const totalCustomers = await User.countDocuments(filterUser);
 
-    // Recent data
-    const paidOrders = await Order.find({ paymentStatus: 'paid' });
+    const paidOrders = await Order.find({ ...filterOrder, paymentStatus: 'paid' });
     const totalRevenue = paidOrders.reduce((acc, order) => acc + (order.totalAmount || 0), 0);
     const totalSales = paidOrders.reduce((acc, order) => {
       return acc + order.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -24,6 +38,21 @@ export const getAnalytics = async (req: Request, res: Response) => {
 
     const expenses = await Expense.find();
     const totalExpenses = expenses.reduce((acc, expense) => acc + (expense.amount || 0), 0);
+
+    // Today specific summary
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const todayOrdersCount = await Order.countDocuments({ createdAt: { $gte: startOfToday, $lte: endOfToday } });
+    const todayCustomersCount = await User.countDocuments({ role: { $in: ['customer', 'user'] }, createdAt: { $gte: startOfToday, $lte: endOfToday } });
+
+    const todayPaidOrders = await Order.find({ paymentStatus: 'paid', createdAt: { $gte: startOfToday, $lte: endOfToday } });
+    const todaySalesAmount = todayPaidOrders.reduce((acc, order) => acc + (order.totalAmount || 0), 0);
+    const todayItemsSoldAmount = todayPaidOrders.reduce((acc, order) => {
+      return acc + order.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    }, 0);
 
     // Trend Calculations (Period A: last 24h, Period B: 24h to 48h ago)
     const getPeriodStats = async (start: Date, end: Date) => {
@@ -58,6 +87,11 @@ export const getAnalytics = async (req: Request, res: Response) => {
       total_expenses: totalExpenses,
       recent_orders: recentOrders,
       recent_customers: recentCustomers,
+      // Today summary
+      today_sales: todaySalesAmount,
+      today_customers: todayCustomersCount,
+      today_orders: todayOrdersCount,
+      today_items_sold: todayItemsSoldAmount,
       // Trends
       orders_trend: calculateTrend(currentPeriod.ordersCount, previousPeriod.ordersCount),
       orders_positive: currentPeriod.ordersCount >= previousPeriod.ordersCount,

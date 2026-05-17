@@ -55,14 +55,11 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'Order must contain at least one item.' });
     }
 
-    // 1. Stock Validation
+    // 1. Product Existence Check
     for (const item of parsedItems) {
       const product = await Product.findById(item.productId || item.id);
       if (!product) {
         return res.status(404).json({ message: `Product ${item.productName} not found.` });
-      }
-      if (product.quantity < item.quantity) {
-        return res.status(400).json({ message: `some products are out of quantity are out of stock` });
       }
     }
 
@@ -115,15 +112,24 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // 3. Stock Reduction
-    for (const item of parsedItems) {
-      await Product.findByIdAndUpdate(item.productId || item.id, {
-        $inc: { quantity: -item.quantity }
-      });
-    }
-
     // Set payment status based on POS method
     const isAdminPayment = ['cash', 'pos', 'transfer'].includes(payment_method);
+    const paymentStatus = isAdminPayment ? 'paid' : 'unpaid';
+
+    // 3. Stock Reduction only if order is paid immediately (POS)
+    if (paymentStatus === 'paid') {
+      for (const item of parsedItems) {
+        const product = await Product.findById(item.productId || item.id);
+        if (product && product.quantity < item.quantity) {
+          return res.status(400).json({ message: `Insufficient stock for product ${item.productName} to complete POS order.` });
+        }
+      }
+      for (const item of parsedItems) {
+        await Product.findByIdAndUpdate(item.productId || item.id, {
+          $inc: { quantity: -item.quantity }
+        });
+      }
+    }
 
     // Generate Order ID (Receipt Number)
     const setting = await Setting.findOne();
@@ -149,11 +155,29 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       totalAmount: total_amount,
       notes,
       paymentMethod: payment_method || 'online',
-      paymentStatus: isAdminPayment ? 'paid' : 'unpaid',
+      paymentStatus: paymentStatus,
       receiptNumber: generatedReceiptNumber,
       approvedBy: req.user ? (req.user.name || req.user.email) : 'POS System',
       receiptPath: req.file ? (req.file as any).location || `/uploads/${req.file.filename}` : null,
     });
+
+    // Emit via Socket.io if available
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('newOrder', {
+        ...order.toObject(),
+        id: order.id,
+        customer_name: order.get('customerName'),
+        customer_email: order.get('customerEmail'),
+        customer_phone: order.get('customerPhone'),
+        delivery_address: order.get('deliveryAddress'),
+        total_amount: order.get('totalAmount'),
+        payment_status: order.get('paymentStatus'),
+        receipt_number: order.get('receiptNumber'),
+        approved_by: order.get('approvedBy'),
+        created_at: order.get('createdAt'),
+      });
+    }
 
     res.status(201).json({
       ...order.toObject(),
@@ -228,6 +252,41 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
+    // Validate stock and deduct if changing to 'paid'
+    if (finalPaymentStatus === 'paid' && order.paymentStatus !== 'paid') {
+      const shortages = [];
+      for (const item of order.items) {
+        const product = await Product.findById(item.productId);
+        if (!product) {
+          return res.status(404).json({ message: `Product ${item.productName} not found` });
+        }
+        if (product.quantity < item.quantity) {
+          shortages.push({
+            productId: product.id,
+            productName: product.name,
+            available: product.quantity,
+            required: item.quantity,
+            shortage: item.quantity - product.quantity
+          });
+        }
+      }
+
+      if (shortages.length > 0) {
+        return res.status(400).json({
+          code: 'INSUFFICIENT_STOCK',
+          message: 'Insufficient stock to approve this order',
+          shortages
+        });
+      }
+
+      // Deduct stock
+      for (const item of order.items) {
+        await Product.findByIdAndUpdate(item.productId, {
+          $inc: { quantity: -item.quantity }
+        });
+      }
+    }
+
     const updateData: any = {};
     if (status) updateData.status = status;
     if (finalPaymentStatus) updateData.paymentStatus = finalPaymentStatus;
@@ -295,7 +354,39 @@ export const bulkUpdateStatus = async (req: AuthRequest, res: Response) => {
     const setting = await Setting.findOne();
     const prefix = getCompanyInitials(setting?.companyName || '');
     
-    // Process them to handle individual receipt generation
+    // Transactional Stock Safety Validation (All or Nothing)
+    if (finalPaymentStatus === 'paid') {
+      for (const id of ids) {
+        const order = await Order.findById(id);
+        if (!order || order.paymentStatus === 'paid') continue;
+        
+        const shortages = [];
+        for (const item of order.items) {
+          const product = await Product.findById(item.productId);
+          if (!product) {
+            return res.status(404).json({ message: `Product ${item.productName} not found` });
+          }
+          if (product.quantity < item.quantity) {
+            shortages.push({
+              productName: product.name,
+              available: product.quantity,
+              required: item.quantity,
+              shortage: item.quantity - product.quantity
+            });
+          }
+        }
+
+        if (shortages.length > 0) {
+          return res.status(400).json({
+            code: 'INSUFFICIENT_STOCK',
+            message: `Order for ${order.customerName} has insufficient stock for approval.`,
+            shortages
+          });
+        }
+      }
+    }
+
+    // Process them to handle individual receipt generation and stock deduction
     const updatedOrders = [];
     for (const id of ids) {
       const order = await Order.findById(id);
@@ -304,6 +395,15 @@ export const bulkUpdateStatus = async (req: AuthRequest, res: Response) => {
       const updateData: any = {};
       if (status) updateData.status = status;
       if (finalPaymentStatus) updateData.paymentStatus = finalPaymentStatus;
+
+      if (finalPaymentStatus === 'paid' && order.paymentStatus !== 'paid') {
+        // Deduct stock (already validated)
+        for (const item of order.items) {
+          await Product.findByIdAndUpdate(item.productId, {
+            $inc: { quantity: -item.quantity }
+          });
+        }
+      }
 
       if (finalPaymentStatus === 'paid' && !order.receiptNumber) {
         const count = await Order.countDocuments({ receiptNumber: { $regex: new RegExp(`^${prefix}-`) } });
@@ -318,6 +418,16 @@ export const bulkUpdateStatus = async (req: AuthRequest, res: Response) => {
     res.json({ message: 'Bulk update successful', count: updatedOrders.length });
   } catch (error: any) {
     res.status(400).json({ message: error.message });
+  }
+};
+
+export const getOrdersCount = async (req: AuthRequest, res: Response) => {
+  try {
+    const total = await Order.countDocuments();
+    const unpaid = await Order.countDocuments({ paymentStatus: 'unpaid' });
+    res.json({ total, unpaid });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 };
 

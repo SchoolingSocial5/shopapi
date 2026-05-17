@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import Purchase from '../models/Purchase';
 import Product from '../models/Product';
+import WholesaleProduct from '../models/WholesaleProduct';
 
 export const getPurchases = async (req: Request, res: Response) => {
   try {
@@ -12,34 +13,43 @@ export const getPurchases = async (req: Request, res: Response) => {
     let query: any = {};
 
     if (productType) {
-      // Find products that match the type
-      const products = await Product.find({ productType }).select('_id');
-      const productIds = products.map(p => p._id);
-      query.productId = { $in: productIds };
+      if (productType === 'Retail') {
+        const products = await Product.find().select('_id');
+        const productIds = products.map(p => p._id);
+        query.productId = { $in: productIds };
+      } else if (productType === 'Whole') {
+        const products = await WholesaleProduct.find().select('_id');
+        const productIds = products.map(p => p._id);
+        query.productId = { $in: productIds };
+      }
     }
 
     const total = await Purchase.countDocuments(query);
     const purchases = await Purchase.find(query)
-      .populate('productId')
       .sort({ date: -1 })
       .skip(skip)
       .limit(limit);
 
     // Map to the flat structure the frontend expects
-    const mappedPurchases = purchases.map(p => {
-      const product = p.productId as any;
+    const mappedPurchases = await Promise.all(purchases.map(async (p) => {
+      let product = await Product.findById(p.productId);
+      let isWholesale = false;
+      if (!product) {
+        product = await WholesaleProduct.findById(p.productId) as any;
+        isWholesale = true;
+      }
       return {
         id: p.id,
         product_id: product?._id,
         product_name: product?.name || 'Deleted Product',
-        product_category: product?.category || '',
+        product_category: isWholesale ? 'Wholesale' : (product?.category || ''),
         product_image: product?.imageUrl || null,
         quantity: p.quantity,
         cost_price: p.costPrice,
         total_amount: p.quantity * p.costPrice,
         created_at: p.date,
       };
-    });
+    }));
 
     res.json({
       purchases: mappedPurchases,
@@ -72,6 +82,12 @@ export const createPurchase = async (req: Request, res: Response) => {
     if (product) {
       product.quantity = (product.quantity || 0) + parseFloat(quantity as string);
       await product.save();
+    } else {
+      const wholesaleProduct = await WholesaleProduct.findById(product_id);
+      if (wholesaleProduct) {
+        wholesaleProduct.quantity = (wholesaleProduct.quantity || 0) + parseFloat(quantity as string);
+        await wholesaleProduct.save();
+      }
     }
 
     res.status(201).json(purchase);
@@ -89,3 +105,4 @@ export const deletePurchase = async (req: Request, res: Response) => {
     res.status(500).json({ message: error.message });
   }
 };
+

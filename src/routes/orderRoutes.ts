@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createOrder, getOrders, getCustomerOrders, getOrderById, updateOrderStatus, deleteOrder, bulkUpdateStatus, bulkDeleteOrders } from '../controllers/orderController';
+import { createOrder, getOrders, getCustomerOrders, getOrderById, updateOrderStatus, deleteOrder, bulkUpdateStatus, bulkDeleteOrders, getOrdersCount } from '../controllers/orderController';
 import { protect, adminOnly } from '../middleware/auth';
 import upload from '../middleware/upload';
 
@@ -18,6 +18,7 @@ router.post('/', upload.single('receipt'), (req, res, next) => {
 // Protected routes
 router.get('/customer', protect, getCustomerOrders);
 router.get('/', protect, adminOnly, getOrders);
+router.get('/count', protect, adminOnly, getOrdersCount);
 router.get('/:id', protect, getOrderById);
 router.patch('/:id', protect, adminOnly, updateOrderStatus);
 router.post('/bulk-status', protect, adminOnly, bulkUpdateStatus);
