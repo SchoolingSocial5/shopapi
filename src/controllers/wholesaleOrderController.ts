@@ -3,6 +3,7 @@ import WholesaleOrder from '../models/WholesaleOrder';
 import User from '../models/User';
 import WholesaleProduct from '../models/WholesaleProduct';
 import { AuthRequest } from '../middleware/auth';
+import { generateToken } from '../utils/jwt';
 import Setting from '../models/Setting';
 import bcrypt from 'bcryptjs';
 
@@ -54,14 +55,11 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'Order must contain at least one item.' });
     }
 
-    // 1. Stock Validation
+    // 1. Product Existence Check
     for (const item of parsedItems) {
       const product = await WholesaleProduct.findById(item.productId || item.id);
       if (!product) {
         return res.status(404).json({ message: `Wholesale product ${item.productName} not found.` });
-      }
-      if (product.quantity < item.quantity) {
-        return res.status(400).json({ message: `Insufficient quantity for ${product.name}` });
       }
     }
 
@@ -83,6 +81,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         currentUser = { id: userExists.id } as any;
         userExists.totalOrders = (userExists.totalOrders || 0) + 1;
         userExists.totalSpent = (userExists.totalSpent || 0) + Number(total_amount);
+        userExists.customerType = 'Wholesale';
         await userExists.save();
       } else if (effectiveEmail) {
         const salt = await bcrypt.genSalt(10);
@@ -95,7 +94,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           phone: customer_phone,
           address: delivery_address || 'Admin Created',
           totalOrders: 1,
-          totalSpent: Number(total_amount)
+          totalSpent: Number(total_amount),
+          customerType: 'Wholesale'
         });
 
         if (newUser) {
@@ -107,18 +107,28 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       if (loggedInUser) {
         loggedInUser.totalOrders = (loggedInUser.totalOrders || 0) + 1;
         loggedInUser.totalSpent = (loggedInUser.totalSpent || 0) + Number(total_amount);
+        loggedInUser.customerType = 'Wholesale';
         await loggedInUser.save();
       }
     }
 
-    // 3. Stock Reduction
-    for (const item of parsedItems) {
-      await WholesaleProduct.findByIdAndUpdate(item.productId || item.id, {
-        $inc: { quantity: -item.quantity }
-      });
-    }
-
     const isAdminPayment = ['cash', 'pos', 'transfer'].includes(payment_method);
+    const paymentStatus = isAdminPayment ? 'paid' : 'unpaid';
+
+    // 3. Stock Reduction only if order is paid immediately (POS style)
+    if (paymentStatus === 'paid') {
+      for (const item of parsedItems) {
+        const product = await WholesaleProduct.findById(item.productId || item.id);
+        if (product && product.quantity < item.quantity) {
+          return res.status(400).json({ message: `Insufficient stock for wholesale product ${item.productName} to complete POS order.` });
+        }
+      }
+      for (const item of parsedItems) {
+        await WholesaleProduct.findByIdAndUpdate(item.productId || item.id, {
+          $inc: { quantity: -item.quantity }
+        });
+      }
+    }
 
     // Generate Order ID (Receipt Number)
     const setting = await Setting.findOne();
@@ -150,9 +160,48 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       receiptPath: req.file ? (req.file as any).location || `/uploads/${req.file.filename}` : null,
     });
 
+    // Emit via Socket.io if available
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('newWholesaleOrder', {
+        ...order.toObject(),
+        id: order.id,
+        customer_name: order.get('customerName'),
+        customer_email: order.get('customerEmail'),
+        customer_phone: order.get('customerPhone'),
+        delivery_address: order.get('deliveryAddress'),
+        total_amount: order.get('totalAmount'),
+        payment_status: order.get('paymentStatus'),
+        receipt_number: order.get('receiptNumber'),
+        approved_by: order.get('approvedBy'),
+        created_at: order.get('createdAt'),
+      });
+    }
+
+    let authPayload = null;
+    if (currentUser) {
+      const dbUser = await User.findById(currentUser.id);
+      if (dbUser) {
+        authPayload = {
+          access_token: generateToken({ id: dbUser.id }),
+          user: {
+            id: dbUser.id,
+            name: dbUser.name,
+            email: dbUser.email,
+            phone: dbUser.phone,
+            address: dbUser.address,
+            role: dbUser.role,
+            status: dbUser.status,
+            customerType: dbUser.customerType
+          }
+        };
+      }
+    }
+
     res.status(201).json({
       ...order.toObject(),
-      id: order.id
+      id: order.id,
+      auth: authPayload
     });
   } catch (error: any) {
     console.error('Create Wholesale Order Error:', error);
@@ -212,6 +261,41 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
     const order = await WholesaleOrder.findById(req.params.id);
     if (!order) {
       return res.status(404).json({ message: 'Wholesale order not found' });
+    }
+
+    // Validate stock and deduct if changing to 'paid'
+    if (finalPaymentStatus === 'paid' && order.paymentStatus !== 'paid') {
+      const shortages = [];
+      for (const item of order.items) {
+        const product = await WholesaleProduct.findById(item.productId);
+        if (!product) {
+          return res.status(404).json({ message: `Wholesale product ${item.productName} not found` });
+        }
+        if (product.quantity < item.quantity) {
+          shortages.push({
+            productId: product.id,
+            productName: product.name,
+            available: product.quantity,
+            required: item.quantity,
+            shortage: item.quantity - product.quantity
+          });
+        }
+      }
+
+      if (shortages.length > 0) {
+        return res.status(400).json({
+          code: 'INSUFFICIENT_STOCK',
+          message: 'Insufficient stock to approve this wholesale order',
+          shortages
+        });
+      }
+
+      // Deduct stock
+      for (const item of order.items) {
+        await WholesaleProduct.findByIdAndUpdate(item.productId, {
+          $inc: { quantity: -item.quantity }
+        });
+      }
     }
 
     const updateData: any = {};

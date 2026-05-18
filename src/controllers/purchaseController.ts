@@ -10,14 +10,29 @@ export const getPurchases = async (req: Request, res: Response) => {
     const productType = req.query.product_type as string;
     const skip = (page - 1) * limit;
 
+    // Enforce department access restrictions
+    const user = (req as any).user;
+    let enforcedProductType = productType;
+    if (user) {
+      const isSuper = user.role === 'admin' || user.status === 'admin' || user.staffPosition === 'Director' || user.staffPosition === 'Developer';
+      if (!isSuper) {
+        const staffType = user.staffType || user.staff_type || 'Retail';
+        if (staffType === 'Retail') {
+          enforcedProductType = 'Retail';
+        } else if (staffType === 'Wholesale') {
+          enforcedProductType = 'Whole';
+        }
+      }
+    }
+
     let query: any = {};
 
-    if (productType) {
-      if (productType === 'Retail') {
+    if (enforcedProductType) {
+      if (enforcedProductType === 'Retail') {
         const products = await Product.find().select('_id');
         const productIds = products.map(p => p._id);
         query.productId = { $in: productIds };
-      } else if (productType === 'Whole') {
+      } else if (enforcedProductType === 'Whole') {
         const products = await WholesaleProduct.find().select('_id');
         const productIds = products.map(p => p._id);
         query.productId = { $in: productIds };

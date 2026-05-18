@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import Order from '../models/Order';
+import WholesaleOrder from '../models/WholesaleOrder';
 import Product from '../models/Product';
+import WholesaleProduct from '../models/WholesaleProduct';
 import Expense from '../models/Expense';
 import User from '../models/User';
 
@@ -8,6 +10,14 @@ export const getAnalytics = async (req: Request, res: Response) => {
   try {
     const from = req.query.from as string;
     const to = req.query.to as string;
+
+    const user = (req as any).user;
+    const isSuper = !user || user.role === 'admin' || user.status === 'admin' || user.staffPosition === 'Director' || user.staffPosition === 'Developer';
+    const staffType = user?.staffType || user?.staff_type || 'Retail';
+    const isWholesale = !isSuper && staffType === 'Wholesale';
+
+    const OrderModel = isWholesale ? WholesaleOrder : Order;
+    const ProductModel = isWholesale ? WholesaleProduct : Product;
 
     let filterOrder: any = {};
     let filterUser: any = { role: { $in: ['customer', 'user'] } };
@@ -26,11 +36,11 @@ export const getAnalytics = async (req: Request, res: Response) => {
     const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
     // Total counts (filtered by date-range if provided, or all-time)
-    const totalOrders = await Order.countDocuments(filterOrder);
-    const totalProducts = await Product.countDocuments();
+    const totalOrders = await OrderModel.countDocuments(filterOrder);
+    const totalProducts = await ProductModel.countDocuments();
     const totalCustomers = await User.countDocuments(filterUser);
 
-    const paidOrders = await Order.find({ ...filterOrder, paymentStatus: 'paid' });
+    const paidOrders = await OrderModel.find({ ...filterOrder, paymentStatus: 'paid' });
     const totalRevenue = paidOrders.reduce((acc, order) => acc + (order.totalAmount || 0), 0);
     const totalSales = paidOrders.reduce((acc, order) => {
       return acc + order.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -45,10 +55,10 @@ export const getAnalytics = async (req: Request, res: Response) => {
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
 
-    const todayOrdersCount = await Order.countDocuments({ createdAt: { $gte: startOfToday, $lte: endOfToday } });
+    const todayOrdersCount = await OrderModel.countDocuments({ createdAt: { $gte: startOfToday, $lte: endOfToday } });
     const todayCustomersCount = await User.countDocuments({ role: { $in: ['customer', 'user'] }, createdAt: { $gte: startOfToday, $lte: endOfToday } });
 
-    const todayPaidOrders = await Order.find({ paymentStatus: 'paid', createdAt: { $gte: startOfToday, $lte: endOfToday } });
+    const todayPaidOrders = await OrderModel.find({ paymentStatus: 'paid', createdAt: { $gte: startOfToday, $lte: endOfToday } });
     const todaySalesAmount = todayPaidOrders.reduce((acc, order) => acc + (order.totalAmount || 0), 0);
     const todayItemsSoldAmount = todayPaidOrders.reduce((acc, order) => {
       return acc + order.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -56,7 +66,7 @@ export const getAnalytics = async (req: Request, res: Response) => {
 
     // Trend Calculations (Period A: last 24h, Period B: 24h to 48h ago)
     const getPeriodStats = async (start: Date, end: Date) => {
-      const orders = await Order.find({ createdAt: { $gte: start, $lt: end } });
+      const orders = await OrderModel.find({ createdAt: { $gte: start, $lt: end } });
       const customers = await User.countDocuments({ role: { $in: ['customer', 'user'] }, createdAt: { $gte: start, $lt: end } });
       const revenue = orders.filter(o => o.paymentStatus === 'paid').reduce((acc, o) => acc + (o.totalAmount || 0), 0);
       const sales = orders.filter(o => o.paymentStatus === 'paid').reduce((acc, o) => {
@@ -75,7 +85,7 @@ export const getAnalytics = async (req: Request, res: Response) => {
       return `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`;
     };
 
-    const recentOrders = await Order.find().sort({ createdAt: -1 }).limit(5);
+    const recentOrders = await OrderModel.find().sort({ createdAt: -1 }).limit(5);
     const recentCustomers = await User.find({ role: { $in: ['customer', 'user'] } }).sort({ createdAt: -1 }).limit(5);
 
     res.json({

@@ -6,14 +6,30 @@ export const getExpenses = async (req: any, res: Response) => {
     const { from, to } = req.query;
     let query: any = {};
     
-    if (from || to) {
+    // If not provided at all (default load), show today's expenses
+    const defaultFrom = from !== undefined ? from : new Date().toISOString().split('T')[0];
+    const defaultTo = to !== undefined ? to : new Date().toISOString().split('T')[0];
+
+    if (defaultFrom || defaultTo) {
       query.date = {};
-      if (from) query.date.$gte = new Date(from as string);
-      if (to) {
-        const toDate = new Date(to as string);
+      if (defaultFrom) query.date.$gte = new Date(defaultFrom as string);
+      if (defaultTo) {
+        const toDate = new Date(defaultTo as string);
         toDate.setHours(23, 59, 59, 999);
         query.date.$lte = toDate;
       }
+    }
+
+    const user = req.user;
+    const isSuper = !user || user.role === 'admin' || user.status === 'admin' || user.staffPosition === 'Director' || user.staffPosition === 'Developer';
+    
+    if (!isSuper) {
+      const staffType = user.staffType || user.staff_type || 'Retail';
+      query.$or = [
+        { department: staffType },
+        { department: 'All' },
+        { department: { $exists: false } }
+      ];
     }
 
     const expenses = await Expense.find(query).sort({ date: -1 });
@@ -36,6 +52,14 @@ export const createExpense = async (req: any, res: Response) => {
     ? (req.file as any).location || `/uploads/${req.file.filename}` 
     : null;
 
+  const user = req.user;
+  const isSuper = user && (user.role === 'admin' || user.status === 'admin' || user.staffPosition === 'Director' || user.staffPosition === 'Developer');
+  
+  let department = 'All';
+  if (user && !isSuper) {
+    department = user.staffType || user.staff_type || 'Retail';
+  }
+
   try {
     const expense = await Expense.create({
       title,
@@ -45,6 +69,7 @@ export const createExpense = async (req: any, res: Response) => {
       description,
       receiptPath,
       recorded_by: recordedBy,
+      department,
     });
     
     res.status(201).json({

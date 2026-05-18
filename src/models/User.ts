@@ -17,6 +17,8 @@ export interface IUser extends Document {
   staffRole?: string;
   staffDuties?: string;
   staffSalary?: string;
+  staffType?: 'Retail' | 'Wholesale' | 'All';
+  customerType?: 'Retail' | 'Wholesale' | 'All';
   resetCode?: string;
   resetCodeExpiry?: Date;
 }
@@ -37,6 +39,8 @@ const UserSchema: Schema = new Schema(
     staffRole: { type: String },
     staffDuties: { type: String },
     staffSalary: { type: String },
+    staffType: { type: String, enum: ['Retail', 'Wholesale', 'All'], default: 'Retail' },
+    customerType: { type: String, enum: ['Retail', 'Wholesale', 'All'], default: 'Retail' },
     resetCode: { type: String },
     resetCodeExpiry: { type: Date },
   },
@@ -52,5 +56,7 @@ UserSchema.virtual('orders_count').get(function() { return this.totalOrders; });
 UserSchema.virtual('orders_sum_total_amount').get(function() { return this.totalSpent; });
 UserSchema.virtual('created_at').get(function() { return this.createdAt; });
 UserSchema.virtual('updated_at').get(function() { return this.updatedAt; });
+UserSchema.virtual('staff_type').get(function() { return this.staffType; });
+UserSchema.virtual('customer_type').get(function() { return this.customerType; });
 
 export default mongoose.model<IUser>('User', UserSchema);

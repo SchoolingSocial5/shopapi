@@ -88,13 +88,22 @@ export const getFinanceData = async (req: Request, res: Response) => {
     let wholesaleExpensesAmount = 0;
 
     for (const e of expenses) {
-      const category = (e.category || '').toLowerCase();
-      if (category.includes('wholesale') || category.includes('whole')) {
+      const dept = (e as any).department;
+      if (dept === 'Wholesale') {
         wholesaleExpensesQty += 1;
         wholesaleExpensesAmount += e.amount || 0;
-      } else {
+      } else if (dept === 'Retail') {
         retailExpensesQty += 1;
         retailExpensesAmount += e.amount || 0;
+      } else {
+        const category = (e.category || '').toLowerCase();
+        if (category.includes('wholesale') || category.includes('whole')) {
+          wholesaleExpensesQty += 1;
+          wholesaleExpensesAmount += e.amount || 0;
+        } else {
+          retailExpensesQty += 1;
+          retailExpensesAmount += e.amount || 0;
+        }
       }
     }
 
@@ -127,19 +136,35 @@ export const getFinanceData = async (req: Request, res: Response) => {
       }
     }
 
-    res.json({
-      retail: {
-        sales: { name: 'Retail Sales', quantity: retailSalesQty, amount: retailSalesAmount },
-        purchases: { name: 'Retail Purchases', quantity: retailPurchasesQty, amount: retailPurchasesAmount },
-        expenses: { name: 'Retail Expenses', quantity: retailExpensesQty, amount: retailExpensesAmount },
-        salary: { name: 'Retail Staff Salaries', quantity: retailSalariesQty, amount: retailSalariesAmount }
-      },
-      wholesale: {
-        sales: { name: 'Wholesale Sales', quantity: wholesaleSalesQty, amount: wholesaleSalesAmount },
-        purchases: { name: 'Wholesale Purchases', quantity: wholesalePurchasesQty, amount: wholesalePurchasesAmount },
-        expenses: { name: 'Wholesale Expenses', quantity: wholesaleExpensesQty, amount: wholesaleExpensesAmount },
-        salary: { name: 'Wholesale Staff Salaries', quantity: wholesaleSalariesQty, amount: wholesaleSalariesAmount }
+    const user = (req as any).user;
+    const isSuper = !user || user.role === 'admin' || user.status === 'admin' || user.staffPosition === 'Director' || user.staffPosition === 'Developer';
+
+    let retailResponse: any = {
+      sales: { name: 'Retail Sales', quantity: retailSalesQty, amount: retailSalesAmount },
+      purchases: { name: 'Retail Purchases', quantity: retailPurchasesQty, amount: retailPurchasesAmount },
+      expenses: { name: 'Retail Expenses', quantity: retailExpensesQty, amount: retailExpensesAmount },
+      salary: { name: 'Retail Staff Salaries', quantity: retailSalariesQty, amount: retailSalariesAmount }
+    };
+
+    let wholesaleResponse: any = {
+      sales: { name: 'Wholesale Sales', quantity: wholesaleSalesQty, amount: wholesaleSalesAmount },
+      purchases: { name: 'Wholesale Purchases', quantity: wholesalePurchasesQty, amount: wholesalePurchasesAmount },
+      expenses: { name: 'Wholesale Expenses', quantity: wholesaleExpensesQty, amount: wholesaleExpensesAmount },
+      salary: { name: 'Wholesale Staff Salaries', quantity: wholesaleSalariesQty, amount: wholesaleSalariesAmount }
+    };
+
+    if (!isSuper) {
+      const staffType = user.staffType || user.staff_type || 'Retail';
+      if (staffType === 'Retail') {
+        wholesaleResponse = null;
+      } else if (staffType === 'Wholesale') {
+        retailResponse = null;
       }
+    }
+
+    res.json({
+      retail: retailResponse,
+      wholesale: wholesaleResponse
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message });

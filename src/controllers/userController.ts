@@ -39,6 +39,33 @@ export const getCustomers = async (req: Request, res: Response) => {
       ];
     }
 
+    const user = (req as any).user;
+    const isSuper = !user || user.role === 'admin' || user.status === 'admin' || user.staffPosition === 'Director' || user.staffPosition === 'Developer';
+
+    if (!isSuper) {
+      const staffType = user.staffType || user.staff_type || 'Retail';
+      if (staffType === 'Retail') {
+        const retailClause = {
+          $or: [
+            { customerType: 'Retail' },
+            { customerType: { $exists: false } },
+            { customerType: null }
+          ]
+        };
+        if (query.$or) {
+          query.$and = [
+            { $or: query.$or },
+            retailClause
+          ];
+          delete query.$or;
+        } else {
+          query.$or = retailClause.$or;
+        }
+      } else if (staffType === 'Wholesale') {
+        query.customerType = 'Wholesale';
+      }
+    }
+
     const total = await User.countDocuments(query);
     const customers = await User.find(query)
       .select('-password')
@@ -61,11 +88,12 @@ export const getCustomers = async (req: Request, res: Response) => {
 };
 
 export const updateUserRole = async (req: Request, res: Response) => {
-  const { role, status } = req.body;
+  const { role, status, staffType } = req.body;
   try {
     const updateData: any = {};
     if (role !== undefined) updateData.role = role;
     if (status !== undefined) updateData.status = status;
+    if (staffType !== undefined) updateData.staffType = staffType;
 
     const user = await User.findByIdAndUpdate(req.params.id, { $set: updateData }, { new: true }).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -142,7 +170,7 @@ export const getUserOrders = async (req: Request, res: Response) => {
 };
 
 export const assignPosition = async (req: Request, res: Response) => {
-  const { positionId } = req.body;
+  const { positionId, staffType } = req.body;
   const { id } = req.params;
 
   try {
@@ -158,6 +186,9 @@ export const assignPosition = async (req: Request, res: Response) => {
     user.staffRole = position.role;
     user.staffDuties = position.duties;
     user.staffSalary = position.salary;
+    if (staffType) {
+      user.staffType = staffType;
+    }
 
     await user.save();
 

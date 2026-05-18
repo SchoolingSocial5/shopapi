@@ -82,6 +82,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
         // Update CRM stats
         userExists.totalOrders = (userExists.totalOrders || 0) + 1;
         userExists.totalSpent = (userExists.totalSpent || 0) + Number(total_amount);
+        userExists.customerType = 'Retail';
         await userExists.save();
       } else if (effectiveEmail) {
         // Create new user
@@ -95,7 +96,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
           phone: customer_phone,
           address: delivery_address || 'Admin Created',
           totalOrders: 1,
-          totalSpent: Number(total_amount)
+          totalSpent: Number(total_amount),
+          customerType: 'Retail'
         });
 
         if (newUser) {
@@ -108,6 +110,7 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       if (loggedInUser) {
         loggedInUser.totalOrders = (loggedInUser.totalOrders || 0) + 1;
         loggedInUser.totalSpent = (loggedInUser.totalSpent || 0) + Number(total_amount);
+        loggedInUser.customerType = 'Retail';
         await loggedInUser.save();
       }
     }
@@ -179,9 +182,30 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       });
     }
 
+    let authPayload = null;
+    if (currentUser) {
+      const dbUser = await User.findById(currentUser.id);
+      if (dbUser) {
+        authPayload = {
+          access_token: generateToken({ id: dbUser.id }),
+          user: {
+            id: dbUser.id,
+            name: dbUser.name,
+            email: dbUser.email,
+            phone: dbUser.phone,
+            address: dbUser.address,
+            role: dbUser.role,
+            status: dbUser.status,
+            customerType: dbUser.customerType
+          }
+        };
+      }
+    }
+
     res.status(201).json({
       ...order.toObject(),
-      id: order.id
+      id: order.id,
+      auth: authPayload
     });
   } catch (error: any) {
     console.error('Create Order Error:', error);

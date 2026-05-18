@@ -38,6 +38,34 @@ export const adminOnly = (req: AuthRequest, res: Response, next: NextFunction) =
   }
 };
 
+export const retailOnly = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (req.user) {
+    const isSuper = req.user.role === 'admin' || req.user.status === 'admin' || req.user.staffPosition === 'Director' || req.user.staffPosition === 'Developer';
+    const staffType = req.user.staffType || req.user.staff_type || 'Retail';
+    if (isSuper || staffType === 'Retail' || staffType === 'All' || !req.user.staffPosition) {
+      next();
+    } else {
+      res.status(403).json({ message: 'Access denied. Only Retail staff can access this.' });
+    }
+  } else {
+    res.status(401).json({ message: 'Not authorized' });
+  }
+};
+
+export const wholesaleOnly = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (req.user) {
+    const isSuper = req.user.role === 'admin' || req.user.status === 'admin' || req.user.staffPosition === 'Director' || req.user.staffPosition === 'Developer';
+    const staffType = req.user.staffType || req.user.staff_type || 'Retail';
+    if (isSuper || staffType === 'Wholesale' || staffType === 'All') {
+      next();
+    } else {
+      res.status(403).json({ message: 'Access denied. Only Wholesale staff can access this.' });
+    }
+  } else {
+    res.status(401).json({ message: 'Not authorized' });
+  }
+};
+
 export const authorize = (position: string) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (req.user && (req.user.role === 'admin' || req.user.staffPosition === position)) {

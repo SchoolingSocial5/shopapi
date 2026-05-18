@@ -37,6 +37,8 @@ export const register = async (req: Request, res: Response) => {
           staffRole: user.staffRole,
           staffDuties: user.staffDuties,
           staffSalary: user.staffSalary,
+          staffType: user.staffType,
+          staff_type: user.staffType,
         },
       });
     } else {
@@ -71,6 +73,8 @@ export const login = async (req: Request, res: Response) => {
           staffRole: user.staffRole,
           staffDuties: user.staffDuties,
           staffSalary: user.staffSalary,
+          staffType: user.staffType,
+          staff_type: user.staffType,
         },
       });
     } else {

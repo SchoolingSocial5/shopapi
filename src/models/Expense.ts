@@ -8,6 +8,7 @@ export interface IExpense extends Document {
   description?: string;
   receiptPath?: string;
   recorded_by?: string;
+  department?: 'Retail' | 'Wholesale' | 'All';
 }
 
 const ExpenseSchema: Schema = new Schema(
@@ -19,6 +20,7 @@ const ExpenseSchema: Schema = new Schema(
     description: { type: String },
     receiptPath: { type: String },
     recorded_by: { type: String },
+    department: { type: String, enum: ['Retail', 'Wholesale', 'All'], default: 'All' },
   },
   {
     timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true },

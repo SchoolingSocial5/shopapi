@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import Product from '../models/Product';
+import WholesaleProduct from '../models/WholesaleProduct';
 
 export const getProducts = async (req: Request, res: Response) => {
   try {
@@ -19,7 +20,12 @@ export const getProducts = async (req: Request, res: Response) => {
 
 export const getProductById = async (req: Request, res: Response) => {
   try {
-    const p = await Product.findById(req.params.id);
+    let p = await Product.findById(req.params.id);
+    let isWholesale = false;
+    if (!p) {
+      p = await WholesaleProduct.findById(req.params.id) as any;
+      isWholesale = true;
+    }
     if (!p) {
       return res.status(404).json({ message: 'Product not found' });
     }
@@ -29,6 +35,7 @@ export const getProductById = async (req: Request, res: Response) => {
       id: p.id,
       cost_price: p.costPrice || "",
       image_url: p.imageUrl || "",
+      category: isWholesale ? 'Wholesale' : p.category,
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
