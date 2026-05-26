@@ -22,6 +22,8 @@ import positionRoutes from './routes/positionRoutes';
 import socialPlatformRoutes from './routes/socialPlatformRoutes';
 import wholesaleOrderRoutes from './routes/wholesaleOrderRoutes';
 import financeRoutes from './routes/financeRoutes';
+import emailTemplateRoutes from './routes/emailTemplateRoutes';
+import notificationTemplateRoutes from './routes/notificationTemplateRoutes';
 
 dotenv.config();
 
@@ -90,6 +92,8 @@ app.use('/api/admin/positions', positionRoutes);
 app.use('/api/social-media', socialPlatformRoutes);
 app.use('/api/admin/social-media', socialPlatformRoutes);
 app.use('/api/admin/finance', financeRoutes);
+app.use('/api/admin/email-templates', emailTemplateRoutes);
+app.use('/api/admin/notification-templates', notificationTemplateRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Schooling Shop API is running' });

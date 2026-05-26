@@ -28,7 +28,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     total_amount, 
     notes,
     password,
-    payment_method 
+    payment_method,
+    approved_by
   } = body;
 
   if (!customer_name || !customer_phone) {
@@ -153,10 +154,10 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       })),
       totalAmount: total_amount,
       notes,
-      paymentMethod: payment_method || 'online',
+      paymentMethod: payment_method || 'transfer',
       paymentStatus: isAdminPayment ? 'paid' : 'unpaid',
       receiptNumber: generatedReceiptNumber,
-      approvedBy: req.user ? (req.user.name || req.user.email) : 'POS System',
+      approvedBy: (isAdminPayment || paymentStatus === 'paid') ? (approved_by || (req.user ? (req.user.name || req.user.email) : 'Admin')) : null,
       receiptPath: req.file ? (req.file as any).location || `/uploads/${req.file.filename}` : null,
     });
 
@@ -335,12 +336,14 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response) => {
     if (status) updateData.status = status;
     if (finalPaymentStatus) updateData.paymentStatus = finalPaymentStatus;
 
-    if (finalPaymentStatus === 'paid' && !order.receiptNumber) {
-      const setting = await Setting.findOne();
-      const prefix = getCompanyInitials(setting?.companyName || '');
-      const count = await WholesaleOrder.countDocuments({ receiptNumber: { $regex: new RegExp(`^${prefix}-`) } });
-      updateData.receiptNumber = `${prefix}-${count + 1}`;
-      updateData.approvedBy = req.user?.name || 'Admin';
+    if (finalPaymentStatus === 'paid') {
+      if (!order.receiptNumber) {
+        const setting = await Setting.findOne();
+        const prefix = getCompanyInitials(setting?.companyName || '');
+        const count = await WholesaleOrder.countDocuments({ receiptNumber: { $regex: new RegExp(`^${prefix}-`) } });
+        updateData.receiptNumber = `${prefix}-${count + 1}`;
+      }
+      updateData.approvedBy = req.user?.name || req.user?.email || 'Admin';
     }
 
     const updatedOrder = await WholesaleOrder.findByIdAndUpdate(
@@ -409,10 +412,12 @@ export const bulkUpdateStatus = async (req: AuthRequest, res: Response) => {
       if (status) updateData.status = status;
       if (finalPaymentStatus) updateData.paymentStatus = finalPaymentStatus;
 
-      if (finalPaymentStatus === 'paid' && !order.receiptNumber) {
-        const count = await WholesaleOrder.countDocuments({ receiptNumber: { $regex: new RegExp(`^${prefix}-`) } });
-        updateData.receiptNumber = `${prefix}-${count + 1}`;
-        updateData.approvedBy = req.user?.name || 'Admin';
+      if (finalPaymentStatus === 'paid') {
+        if (!order.receiptNumber) {
+          const count = await WholesaleOrder.countDocuments({ receiptNumber: { $regex: new RegExp(`^${prefix}-`) } });
+          updateData.receiptNumber = `${prefix}-${count + 1}`;
+        }
+        updateData.approvedBy = req.user?.name || req.user?.email || 'Admin';
       }
 
       const updated = await WholesaleOrder.findByIdAndUpdate(id, { $set: updateData }, { new: true });

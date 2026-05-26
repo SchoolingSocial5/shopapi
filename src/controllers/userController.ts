@@ -170,7 +170,7 @@ export const getUserOrders = async (req: Request, res: Response) => {
 };
 
 export const assignPosition = async (req: Request, res: Response) => {
-  const { positionId, staffType } = req.body;
+  const { positionId, staffType, staffRole } = req.body;
   const { id } = req.params;
 
   try {
@@ -183,7 +183,7 @@ export const assignPosition = async (req: Request, res: Response) => {
     user.status = 'staff';
     user.positionId = position._id as any;
     user.staffPosition = position.name;
-    user.staffRole = position.role;
+    user.staffRole = staffRole !== undefined ? staffRole : position.role;
     user.staffDuties = position.duties;
     user.staffSalary = position.salary;
     if (staffType) {
