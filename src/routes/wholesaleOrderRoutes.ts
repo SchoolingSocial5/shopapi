@@ -13,6 +13,8 @@ router.patch('/:id', protect, adminOnly, wholesaleOnly, wholesaleOrderController
 router.delete('/:id', protect, adminOnly, wholesaleOnly, authorize('Director'), wholesaleOrderController.deleteOrder);
 router.post('/bulk-status', protect, adminOnly, wholesaleOnly, wholesaleOrderController.bulkUpdateStatus);
 router.delete('/bulk-delete', protect, adminOnly, wholesaleOnly, authorize('Director'), wholesaleOrderController.bulkDeleteOrders);
+router.post('/bulk-restore', protect, adminOnly, wholesaleOnly, authorize('Director'), wholesaleOrderController.bulkRestoreOrders);
+router.post('/:id/restore', protect, adminOnly, wholesaleOnly, authorize('Director'), wholesaleOrderController.restoreOrder);
 
 import { verifyToken } from '../utils/jwt';
 import User from '../models/User';

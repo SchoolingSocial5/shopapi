@@ -23,6 +23,8 @@ export interface IWholesaleOrder extends Document {
   approvedBy?: string;
   paymentMethod: 'cash' | 'pos' | 'transfer' | 'online';
   items: IWholesaleOrderItem[];
+  isDeleted?: boolean;
+  deletedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +60,8 @@ const WholesaleOrderSchema: Schema = new Schema(
     approvedBy: { type: String },
     paymentMethod: { type: String, enum: ['cash', 'pos', 'transfer', 'online'], default: 'online' },
     items: [WholesaleOrderItemSchema],
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null },
   },
   {
     timestamps: true,

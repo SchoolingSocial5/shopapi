@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createOrder, getOrders, getCustomerOrders, getOrderById, updateOrderStatus, deleteOrder, bulkUpdateStatus, bulkDeleteOrders, getOrdersCount } from '../controllers/orderController';
+import { createOrder, getOrders, getCustomerOrders, getOrderById, updateOrderStatus, deleteOrder, bulkUpdateStatus, bulkDeleteOrders, getOrdersCount, restoreOrder, bulkRestoreOrders } from '../controllers/orderController';
 import { protect, adminOnly, retailOnly } from '../middleware/auth';
 import upload from '../middleware/upload';
 
@@ -35,6 +35,8 @@ router.post('/', upload.single('receipt'), async (req: any, res, next) => {
 router.get('/customer', protect, getCustomerOrders);
 router.get('/', protect, adminOnly, retailOnly, getOrders);
 router.get('/count', protect, adminOnly, retailOnly, getOrdersCount);
+router.post('/bulk-restore', protect, adminOnly, retailOnly, bulkRestoreOrders);
+router.post('/:id/restore', protect, adminOnly, retailOnly, restoreOrder);
 router.get('/:id', protect, retailOnly, getOrderById);
 router.patch('/:id', protect, adminOnly, retailOnly, updateOrderStatus);
 router.post('/bulk-status', protect, adminOnly, retailOnly, bulkUpdateStatus);

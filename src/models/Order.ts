@@ -23,6 +23,8 @@ export interface IOrder extends Document {
   approvedBy?: string;
   paymentMethod: 'cash' | 'pos' | 'transfer' | 'online';
   items: IOrderItem[];
+  isDeleted?: boolean;
+  deletedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +60,8 @@ const OrderSchema: Schema = new Schema(
     approvedBy: { type: String },
     paymentMethod: { type: String, enum: ['cash', 'pos', 'transfer', 'online'], default: 'online' },
     items: [OrderItemSchema],
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null },
   },
   {
     timestamps: true,

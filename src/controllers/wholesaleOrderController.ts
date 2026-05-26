@@ -220,7 +220,40 @@ export const getOrders = async (req: AuthRequest, res: Response) => {
       filter.paymentStatus = req.query.payment_status;
     }
 
+    if (req.query.trash === 'true') {
+      filter.isDeleted = true;
+    } else {
+      filter.isDeleted = { $ne: true };
+    }
+
+    const { from, to, search } = req.query;
+
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) {
+        const fromDate = new Date(from as string);
+        fromDate.setHours(0, 0, 0, 0);
+        filter.createdAt.$gte = fromDate;
+      }
+      if (to) {
+        const toDate = new Date(to as string);
+        toDate.setHours(23, 59, 59, 999);
+        filter.createdAt.$lte = toDate;
+      }
+    }
+
+    if (search) {
+      const searchRegex = new RegExp(search as string, 'i');
+      filter.$or = [
+        { customerName: searchRegex },
+        { customerEmail: searchRegex },
+        { customerPhone: searchRegex },
+        { receiptNumber: searchRegex }
+      ];
+    }
+
     const total = await WholesaleOrder.countDocuments(filter);
+
     const orders = await WholesaleOrder.find(filter)
       .populate('userId', 'name email')
       .sort({ createdAt: -1 })
@@ -346,7 +379,13 @@ export const deleteOrder = async (req: Request, res: Response) => {
     if (!order) {
       return res.status(404).json({ message: 'Wholesale order not found' });
     }
-    await order.deleteOne();
+    if (req.query.permanent === 'true') {
+      await order.deleteOne();
+    } else {
+      order.isDeleted = true;
+      order.deletedAt = new Date();
+      await order.save();
+    }
     res.status(204).send();
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -389,8 +428,43 @@ export const bulkUpdateStatus = async (req: AuthRequest, res: Response) => {
 export const bulkDeleteOrders = async (req: Request, res: Response) => {
   const { ids } = req.body;
   try {
-    await WholesaleOrder.deleteMany({ _id: { $in: ids } });
+    if (req.query.permanent === 'true') {
+      await WholesaleOrder.deleteMany({ _id: { $in: ids } });
+    } else {
+      await WholesaleOrder.updateMany(
+        { _id: { $in: ids } },
+        { $set: { isDeleted: true, deletedAt: new Date() } }
+      );
+    }
     res.status(204).send();
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const restoreOrder = async (req: Request, res: Response) => {
+  try {
+    const order = await WholesaleOrder.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Wholesale order not found' });
+    }
+    order.isDeleted = false;
+    order.deletedAt = null;
+    await order.save();
+    res.json(order);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const bulkRestoreOrders = async (req: Request, res: Response) => {
+  const { ids } = req.body;
+  try {
+    await WholesaleOrder.updateMany(
+      { _id: { $in: ids } },
+      { $set: { isDeleted: false, deletedAt: null } }
+    );
+    res.json({ message: 'Wholesale orders restored successfully' });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
