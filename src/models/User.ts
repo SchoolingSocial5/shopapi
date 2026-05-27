@@ -21,6 +21,10 @@ export interface IUser extends Document {
   customerType?: 'Retail' | 'Wholesale' | 'All';
   resetCode?: string;
   resetCodeExpiry?: Date;
+  latitude?: number;
+  longitude?: number;
+  isTrackingEnabled?: boolean;
+  lastLocationUpdate?: Date;
 }
 
 const UserSchema: Schema = new Schema(
@@ -43,6 +47,10 @@ const UserSchema: Schema = new Schema(
     customerType: { type: String, enum: ['Retail', 'Wholesale', 'All'], default: 'Retail' },
     resetCode: { type: String },
     resetCodeExpiry: { type: Date },
+    latitude: { type: Number },
+    longitude: { type: Number },
+    isTrackingEnabled: { type: Boolean, default: false },
+    lastLocationUpdate: { type: Date },
   },
   {
     timestamps: true,

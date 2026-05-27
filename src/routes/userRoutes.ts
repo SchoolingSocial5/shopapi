@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getUsers, getStaff, getCustomers, getUserById, updateUserRole, deleteUser, getUserOrders, assignPosition, changePassword } from '../controllers/userController';
+import { getUsers, getStaff, getCustomers, getUserById, updateUserRole, deleteUser, getUserOrders, assignPosition, changePassword, updateLocation, getDispatchLocations } from '../controllers/userController';
 import { protect, adminOnly } from '../middleware/auth';
 
 const router = Router();
@@ -8,6 +8,8 @@ router.get('/', protect, adminOnly, getUsers);
 router.get('/staff', protect, adminOnly, getStaff);
 router.get('/customers', protect, adminOnly, getCustomers);
 router.patch('/profile/password', protect, changePassword);
+router.patch('/profile/location', protect, updateLocation);
+router.get('/dispatch/locations', protect, getDispatchLocations);
 router.get('/:id', protect, getUserById);
 router.get('/:id/orders', protect, adminOnly, getUserOrders);
 router.patch('/:id/assign-position', protect, adminOnly, assignPosition);

@@ -220,3 +220,49 @@ export const changePassword = async (req: Request, res: Response) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+export const updateLocation = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id || (req as any).user?._id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const { latitude, longitude, isTrackingEnabled } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (latitude !== undefined) user.latitude = latitude;
+    if (longitude !== undefined) user.longitude = longitude;
+    if (isTrackingEnabled !== undefined) user.isTrackingEnabled = isTrackingEnabled;
+    user.lastLocationUpdate = new Date();
+
+    await user.save();
+
+    res.json({
+      message: 'Location updated successfully',
+      latitude: user.latitude,
+      longitude: user.longitude,
+      isTrackingEnabled: user.isTrackingEnabled
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getDispatchLocations = async (req: Request, res: Response) => {
+  try {
+    const dispatchers = await User.find({
+      status: 'staff',
+      staffPosition: { $regex: /dispatch/i },
+      isTrackingEnabled: true
+    }).select('name phone email staffPosition latitude longitude lastLocationUpdate');
+
+    res.json(dispatchers);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
