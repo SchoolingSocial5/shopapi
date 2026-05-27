@@ -3,6 +3,7 @@ import { Server } from 'socket.io';
 import app from './app';
 import Order from './models/Order';
 import WholesaleOrder from './models/WholesaleOrder';
+import User from './models/User';
 
 const PORT = process.env.PORT || 5000;
 
@@ -18,6 +19,39 @@ app.set('io', io);
 
 io.on('connection', (socket) => {
   console.log('Socket client connected:', socket.id);
+
+  socket.on('updateLocation', async (data) => {
+    try {
+      const { userId, latitude, longitude, isTrackingEnabled } = data;
+      if (!userId) return;
+
+      const user = await User.findById(userId);
+      if (!user) return;
+
+      if (latitude !== undefined) user.latitude = latitude;
+      if (longitude !== undefined) user.longitude = longitude;
+      if (isTrackingEnabled !== undefined) user.isTrackingEnabled = isTrackingEnabled;
+      user.lastLocationUpdate = new Date();
+
+      await user.save();
+
+      // Broadcast live coordinates to all active admin clients in real-time
+      io.emit('locationUpdated', {
+        id: user._id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        staffPosition: user.staffPosition,
+        latitude: user.latitude,
+        longitude: user.longitude,
+        isTrackingEnabled: user.isTrackingEnabled,
+        lastLocationUpdate: user.lastLocationUpdate
+      });
+    } catch (err) {
+      console.error('Socket updateLocation error:', err);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('Socket client disconnected:', socket.id);
   });
