@@ -117,7 +117,8 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
     }
 
     // Set payment status based on POS method
-    const isAdminPayment = ['cash', 'pos', 'transfer'].includes(payment_method);
+    const isStaff = (req.user && (req.user.status === 'staff' || req.user.status === 'admin' || req.user.role === 'admin')) || approved_by;
+    const isAdminPayment = ['cash', 'pos'].includes(payment_method) || (payment_method === 'transfer' && isStaff);
     const paymentStatus = isAdminPayment ? 'paid' : 'unpaid';
 
     // 3. Stock Reduction only if order is paid immediately (POS)
